@@ -41,6 +41,14 @@
     color: #aaa;
     text-align: center;
   }
+  #gun-indicator {
+    margin-top: 6px;
+    font-size: 15px;
+    font-weight: bold;
+    color: #0f0;
+    min-height: 22px;
+    text-align: center;
+  }
 </style>
 </head>
 <body>
@@ -50,7 +58,8 @@
 </div>
 <canvas id="canvas" width="560" height="620"></canvas>
 <div id="message"></div>
-<div id="instructions">Arrow Keys to move &nbsp;|&nbsp; Press Enter to start / restart</div>
+<div id="gun-indicator"></div>
+<div id="instructions">Arrow Keys to move &nbsp;|&nbsp; Space = shoot (when armed) &nbsp;|&nbsp; Enter to restart</div>
 
 <script>
 const canvas = document.getElementById('canvas');
@@ -58,6 +67,7 @@ const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('scoreVal');
 const livesEl = document.getElementById('livesDisplay');
 const messageEl = document.getElementById('message');
+const gunEl = document.getElementById('gun-indicator');
 
 const CELL = 20;
 const COLS = 28;
@@ -102,7 +112,7 @@ const MAP_TEMPLATE = [
 // Directions
 const DIR = { NONE:{x:0,y:0}, RIGHT:{x:1,y:0}, LEFT:{x:-1,y:0}, UP:{x:0,y:-1}, DOWN:{x:0,y:1} };
 
-let map, dots, pacman, ghosts, score, lives, state, animFrame;
+let map, dots, pacman, ghosts, score, lives, state, animFrame, bullets, gunSpawned, hasGun;
 
 function deepCopyMap() {
   return MAP_TEMPLATE.map(r => [...r]);
@@ -123,13 +133,27 @@ function initGame() {
     for (let c = 0; c < COLS; c++)
       if (map[r][c] === 0 || map[r][c] === 3) dots++;
 
+  bullets = [];
+  hasGun = false;
+  gunSpawned = null; // {x, y} tile of the gun pickup
+
+  // Spawn gun pickup on a random open tile
+  const openTiles = [];
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (map[r][c] === 0) openTiles.push({x: c, y: r});
+  const gTile = openTiles[Math.floor(Math.random() * openTiles.length)];
+  gunSpawned = { x: gTile.x, y: gTile.y };
+
+  gunEl.textContent = '';
+
   pacman = {
-    x: 13.5, y: 23,   // tile coords (center)
+    x: 13.5, y: 23,
     dir: DIR.NONE,
     nextDir: DIR.NONE,
     speed: 0.1,
     mouthAngle: 0,
-    mouthDir: 1,  // open/close
+    mouthDir: 1,
     dead: false,
     deathFrame: 0
   };
@@ -145,12 +169,12 @@ function initGame() {
     ...g,
     x: g.startX, y: g.startY,
     dir: DIR.UP,
-    speed: 0.08,
-    mode: i === 0 ? 'chase' : 'house', // blinky starts out immediately
+    speed: 0.09,
+    mode: i === 0 ? 'chase' : 'house',
     frightened: false,
     frightenTimer: 0,
     eaten: false,
-    houseTimer: i * 80,  // stagger exit
+    houseTimer: i * 60,
     flashTimer: 0,
     flash: false
   }));
@@ -261,6 +285,15 @@ function updatePacman() {
           g.flash = false;
         }
       });
+    }
+  }
+
+  // Pick up gun
+  if (gunSpawned && !hasGun) {
+    if (Math.abs(p.x - gunSpawned.x) < 0.5 && Math.abs(p.y - gunSpawned.y) < 0.5) {
+      hasGun = true;
+      gunSpawned = null;
+      gunEl.textContent = '🔫 ARMED — Press Space to shoot!';
     }
   }
 
@@ -443,10 +476,48 @@ function checkCollisions() {
   }
 }
 
+function shoot() {
+  if (!hasGun || state !== 'playing') return;
+  // Fire in current direction (or right if stopped)
+  const d = (pacman.dir === DIR.NONE) ? DIR.RIGHT : pacman.dir;
+  bullets.push({ x: pacman.x, y: pacman.y, dir: d, speed: 0.4 });
+}
+
+function updateBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.dir.x * b.speed;
+    b.y += b.dir.y * b.speed;
+
+    // Remove if hits wall or goes out of bounds
+    if (isWallAt(b.x, b.y) || b.x < 0 || b.x >= COLS || b.y < 0 || b.y >= ROWS) {
+      bullets.splice(i, 1);
+      continue;
+    }
+
+    // Check ghost hit
+    let hit = false;
+    for (const g of ghosts) {
+      if (g.eaten || g.mode === 'house') continue;
+      if (dist(b.x, b.y, g.x, g.y) < 0.8) {
+        g.eaten = true;
+        g.frightened = false;
+        g.flash = false;
+        score += 300;
+        scoreEl.textContent = score;
+        hit = true;
+        break;
+      }
+    }
+    if (hit) bullets.splice(i, 1);
+  }
+}
+
 function resetPositions() {
   pacman.x = 13.5; pacman.y = 23;
   pacman.dir = DIR.NONE; pacman.nextDir = DIR.NONE;
   pacman.dead = false;
+  bullets = [];
   ghosts.forEach((g, i) => {
     const defs = [
       {x:13.5,y:11},{x:13.5,y:14},{x:11.5,y:14},{x:15.5,y:14}
@@ -509,12 +580,8 @@ function drawPacman() {
   const py = p.y * CELL + CELL/2;
   const r = CELL/2 - 1;
 
-  // Determine facing angle
-  let faceAngle = 0;
-  if (p.dir === DIR.LEFT || (p.dir === DIR.NONE && p.nextDir === DIR.LEFT)) faceAngle = Math.PI;
-  else if (p.dir === DIR.UP || (p.dir === DIR.NONE && p.nextDir === DIR.UP)) faceAngle = -Math.PI/2;
-  else if (p.dir === DIR.DOWN || (p.dir === DIR.NONE && p.nextDir === DIR.DOWN)) faceAngle = Math.PI/2;
-
+  // Always face right
+  const faceAngle = 0;
   const mouth = p.mouthAngle;
 
   ctx.fillStyle = '#FFD700';
@@ -524,13 +591,19 @@ function drawPacman() {
   ctx.closePath();
   ctx.fill();
 
-  // Eye
+  // Eye (top-right of the circle)
   const eyeX = px + Math.cos(faceAngle - Math.PI/4) * r * 0.5;
   const eyeY = py + Math.sin(faceAngle - Math.PI/4) * r * 0.5;
   ctx.fillStyle = '#000';
   ctx.beginPath();
   ctx.arc(eyeX, eyeY, 2, 0, Math.PI * 2);
   ctx.fill();
+
+  // Draw gun if armed
+  if (hasGun) {
+    ctx.fillStyle = '#0f0';
+    ctx.fillRect(px + r - 2, py - 2, 7, 4);
+  }
 }
 
 function drawGhost(g) {
@@ -634,6 +707,29 @@ function render() {
 
   drawMaze();
 
+  // Draw gun pickup
+  if (gunSpawned) {
+    const gx = gunSpawned.x * CELL + CELL/2;
+    const gy = gunSpawned.y * CELL + CELL/2;
+    const pulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.01);
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#0f0';
+    ctx.font = `${CELL - 2}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🔫', gx, gy);
+    ctx.restore();
+  }
+
+  // Draw bullets
+  ctx.fillStyle = '#ff0';
+  for (const b of bullets) {
+    ctx.beginPath();
+    ctx.arc(b.x * CELL + CELL/2, b.y * CELL + CELL/2, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   if (state !== 'gameover' && state !== 'won') {
     drawPacman();
   }
@@ -661,31 +757,20 @@ function render() {
 // --- Game loop ---
 
 let lastTime = 0;
-let scatterTimer = 0;
-let chaseMode = true; // start in chase
 
 function gameLoop(ts) {
   animFrame = requestAnimationFrame(gameLoop);
   const dt = ts - lastTime;
-  if (dt < 16) return; // ~60fps cap
+  if (dt < 16) return;
   lastTime = ts;
 
   if (state === 'playing') {
-    // Scatter/chase cycling
-    scatterTimer++;
-    if (scatterTimer < 420) { // first 7s chase
-    } else if (scatterTimer < 560) { // 2.3s scatter
-      ghosts.forEach(g => { if (!g.frightened && !g.eaten && g.mode !== 'house') g.mode = 'scatter'; });
-    } else if (scatterTimer < 1160) {
-      ghosts.forEach(g => { if (!g.frightened && !g.eaten && g.mode !== 'house') g.mode = 'chase'; });
-    } else if (scatterTimer < 1280) {
-      ghosts.forEach(g => { if (!g.frightened && !g.eaten && g.mode !== 'house') g.mode = 'scatter'; });
-    } else {
-      ghosts.forEach(g => { if (!g.frightened && !g.eaten && g.mode !== 'house') g.mode = 'chase'; });
-    }
+    // Ghosts always chase
+    ghosts.forEach(g => { if (!g.frightened && !g.eaten && g.mode !== 'house') g.mode = 'chase'; });
 
     updatePacman();
     ghosts.forEach(updateGhost);
+    updateBullets();
     checkCollisions();
   }
 
@@ -705,6 +790,11 @@ document.addEventListener('keydown', e => {
     if (state === 'gameover' || state === 'won') {
       initGame();
     }
+    return;
+  }
+  if (e.key === ' ') {
+    e.preventDefault();
+    shoot();
     return;
   }
   if (keyMap[e.key]) {
