@@ -159,10 +159,10 @@ function initGame() {
   };
 
   const ghostDefs = [
-    { name:'blinky', color:'#FF0000', startX:13.5, startY:11, scatterX:25, scatterY:0 },
-    { name:'pinky',  color:'#FFB8FF', startX:13.5, startY:14, scatterX:2,  scatterY:0 },
-    { name:'inky',   color:'#00FFFF', startX:11.5, startY:14, scatterX:27, scatterY:30 },
-    { name:'clyde',  color:'#FFB852', startX:15.5, startY:14, scatterX:0,  scatterY:30 },
+    { name:'blinky', color:'#FF0000', startX:13, startY:11, scatterX:25, scatterY:0 },
+    { name:'pinky',  color:'#FFB8FF', startX:13, startY:14, scatterX:2,  scatterY:0 },
+    { name:'inky',   color:'#00FFFF', startX:11, startY:14, scatterX:27, scatterY:30 },
+    { name:'clyde',  color:'#FFB852', startX:15, startY:14, scatterX:0,  scatterY:30 },
   ];
 
   ghosts = ghostDefs.map((g, i) => ({
@@ -379,7 +379,7 @@ function updateGhost(g) {
     g.houseTimer--;
     if (g.houseTimer <= 0) {
       g.mode = 'chase';
-      g.x = 13.5;
+      g.x = 13;
       g.y = 11;
       g.dir = DIR.UP;
     }
@@ -520,7 +520,7 @@ function resetPositions() {
   bullets = [];
   ghosts.forEach((g, i) => {
     const defs = [
-      {x:13.5,y:11},{x:13.5,y:14},{x:11.5,y:14},{x:15.5,y:14}
+      {x:13,y:11},{x:13,y:14},{x:11,y:14},{x:15,y:14}
     ];
     g.x = defs[i].x; g.y = defs[i].y;
     g.dir = DIR.UP;
@@ -707,18 +707,24 @@ function render() {
 
   drawMaze();
 
-  // Draw gun pickup
+  // Draw gun pickup (bright green drawn shape)
   if (gunSpawned) {
     const gx = gunSpawned.x * CELL + CELL/2;
     const gy = gunSpawned.y * CELL + CELL/2;
-    const pulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.01);
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.008);
     ctx.save();
     ctx.globalAlpha = pulse;
-    ctx.fillStyle = '#0f0';
-    ctx.font = `${CELL - 2}px serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🔫', gx, gy);
+    ctx.fillStyle = '#00ff44';
+    // barrel
+    ctx.fillRect(gx - 6, gy - 2, 10, 4);
+    // handle
+    ctx.fillRect(gx - 2, gy + 2, 4, 5);
+    // tip
+    ctx.fillRect(gx + 4, gy - 3, 3, 3);
+    // bright outline to stand out
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(gx - 6, gy - 2, 10, 4);
     ctx.restore();
   }
 
