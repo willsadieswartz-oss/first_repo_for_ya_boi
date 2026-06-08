@@ -222,7 +222,7 @@ function canGhostMove(x, y, dir) {
 function isIntersection(x, y) {
   const cx = Math.round(x);
   const cy = Math.round(y);
-  if (Math.abs(x - cx) > 0.1 || Math.abs(y - cy) > 0.1) return false;
+  if (Math.abs(x - cx) > 0.05 || Math.abs(y - cy) > 0.05) return false;
   let openDirs = 0;
   for (const d of [DIR.UP, DIR.DOWN, DIR.LEFT, DIR.RIGHT])
     if (canGhostMove(cx, cy, d)) openDirs++;
@@ -417,7 +417,7 @@ function updateGhost(g) {
   // Decide new direction at grid intersections
   const cx = Math.round(g.x);
   const cy = Math.round(g.y);
-  const onGrid = Math.abs(g.x - cx) < 0.12 && Math.abs(g.y - cy) < 0.12;
+  const onGrid = Math.abs(g.x - cx) < 0.05 && Math.abs(g.y - cy) < 0.05;
 
   if (onGrid && isIntersection(cx, cy)) {
     const newDir = chooseGhostDir(g);
